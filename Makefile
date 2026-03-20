@@ -26,7 +26,7 @@ check-github: ## Check if GitHub CLI is installed and user is authenticated
 		exit 1; \
 	fi
 	@printf "  $(GREEN)$(CHECK) gh installed: %s$(NC)\n" "$$(gh --version | head -1)"
-	@if ! gh auth status >/dev/null 2>&1; then \
+	@if ! gh auth token >/dev/null 2>&1; then \
 		printf "  $(RED)$(CROSS) Not logged in to GitHub$(NC)\n"; \
 		echo "    Run: gh auth login"; \
 		exit 1; \
@@ -114,10 +114,14 @@ ignore-ai-folder: ## Ensure .ai is in the global gitignore
 add-gpatch-script: ## Install gpatch shell function
 	@echo ""
 	@echo "--- gpatch script ---"
-	@if command -v gpatch >/dev/null 2>&1 || type gpatch >/dev/null 2>&1; then \
+	@ZSH_CUSTOM_DIR="$${ZSH_CUSTOM:-$$HOME/.oh-my-zsh/custom}"; \
+	if command -v gpatch >/dev/null 2>&1 || type gpatch >/dev/null 2>&1 \
+		|| [ -f "$$ZSH_CUSTOM_DIR/gpatch.zsh" ] \
+		|| grep -rq 'gpatch' "$$ZSH_CUSTOM_DIR"/*.zsh 2>/dev/null \
+		|| grep -q 'gpatch' ~/.zshrc 2>/dev/null \
+		|| grep -q 'gpatch' ~/.bashrc 2>/dev/null; then \
 		printf "  $(GREEN)$(CHECK) gpatch already available — skipping$(NC)\n"; \
 	else \
-		ZSH_CUSTOM_DIR="$${ZSH_CUSTOM:-$$HOME/.oh-my-zsh/custom}"; \
 		if echo "$$SHELL" | grep -q zsh && [ -d "$$ZSH_CUSTOM_DIR" ]; then \
 			cp .resources/scripts/gpatch.sh "$$ZSH_CUSTOM_DIR/gpatch.zsh"; \
 			printf "  $(GREEN)$(CHECK) Copied to $$ZSH_CUSTOM_DIR/gpatch.zsh$(NC)\n"; \
@@ -162,30 +166,56 @@ prepare-claude: ## Copy CLAUDE.md and agents to parent project's .claude/ folder
 	else \
 		printf "  $(YELLOW)! No agents found in .resources/agents$(NC)\n"; \
 	fi
+	@if [ -f ".resources/mcp.json" ]; then \
+		if [ -f "$(PARENT_DIR)/.claude/mcp.json" ]; then \
+			python3 -c " \
+import json, sys; \
+src = json.load(open('.resources/mcp.json')); \
+dst = json.load(open('$(PARENT_DIR)/.claude/mcp.json')); \
+dst.setdefault('mcpServers', {}).update(src.get('mcpServers', {})); \
+json.dump(dst, open('$(PARENT_DIR)/.claude/mcp.json', 'w'), indent=2); \
+print('  done') \
+			"; \
+			printf "  $(GREEN)$(CHECK) Merged mcp.json into $(PARENT_DIR)/.claude/mcp.json$(NC)\n"; \
+		else \
+			cp .resources/mcp.json "$(PARENT_DIR)/.claude/mcp.json"; \
+			printf "  $(GREEN)$(CHECK) Copied mcp.json to $(PARENT_DIR)/.claude/mcp.json$(NC)\n"; \
+		fi; \
+	fi
+	@if [ -d ".resources/clickup-mcp" ]; then \
+		mkdir -p "$(PARENT_DIR)/.claude/clickup-mcp"; \
+		cp -r .resources/clickup-mcp/* "$(PARENT_DIR)/.claude/clickup-mcp/"; \
+		printf "  $(GREEN)$(CHECK) Copied clickup-mcp to $(PARENT_DIR)/.claude/clickup-mcp$(NC)\n"; \
+	fi
 
 install-clickup-mcp: ## Install ClickUp MCP server for Claude Code
 	@echo ""
 	@echo "--- ClickUp MCP Server ---"
-	@echo "  Installing Python dependencies..."
-	@pip3 install -q -r .claude/clickup-mcp/requirements.txt
-	@python3 -c "import mcp; print('  mcp version:', mcp.__version__)"
-	@if [ -f .claude/mcp.json ]; then \
-		printf "  $(GREEN)$(CHECK) .claude/mcp.json found$(NC)\n"; \
+	@if python3 -c "import mcp" 2>/dev/null && python3 -c "import httpx" 2>/dev/null \
+		&& [ -n "$$CLICKUP_API_TOKEN" ]; then \
+		printf "  $(GREEN)$(CHECK) ClickUp MCP already installed — skipping$(NC)\n"; \
 	else \
-		printf "  $(RED)$(CROSS) .claude/mcp.json not found$(NC)\n"; \
-		exit 1; \
+		echo "  Installing Python dependencies..."; \
+		pip3 install -q -r .resources/clickup-mcp/requirements.txt; \
+		python3 -c "import mcp; v = getattr(mcp, '__version__', 'unknown'); print('  mcp version:', v)"; \
+		if [ -f .resources/mcp.json ]; then \
+			printf "  $(GREEN)$(CHECK) .resources/mcp.json found$(NC)\n"; \
+		else \
+			printf "  $(RED)$(CROSS) .resources/mcp.json not found$(NC)\n"; \
+			exit 1; \
+		fi; \
+		printf "  $(GREEN)$(CHECK) ClickUp MCP installed$(NC)\n"; \
+		echo ""; \
+		echo "  REQUIRED: Set your ClickUp API token"; \
+		echo "    1. Get token from: ClickUp -> Settings -> Apps -> API Token"; \
+		echo '    2. Add to shell profile: export CLICKUP_API_TOKEN="pk_YOUR_TOKEN"'; \
+		echo "    3. Reload shell and restart Claude Code"; \
+		echo ""; \
+		echo "  Tools available after restart:"; \
+		echo "    - get_task              Fetch a task by ID/URL as Markdown"; \
+		echo "    - get_task_comments     Fetch comments for a task"; \
+		echo "    - save_task_as_markdown Fetch + save to tickets/"; \
 	fi
-	@printf "  $(GREEN)$(CHECK) ClickUp MCP installed$(NC)\n"
-	@echo ""
-	@echo "  REQUIRED: Set your ClickUp API token"
-	@echo "    1. Get token from: ClickUp -> Settings -> Apps -> API Token"
-	@echo '    2. Add to shell profile: export CLICKUP_API_TOKEN="pk_YOUR_TOKEN"'
-	@echo "    3. Reload shell and restart Claude Code"
-	@echo ""
-	@echo "  Tools available after restart:"
-	@echo "    - get_task              Fetch a task by ID/URL as Markdown"
-	@echo "    - get_task_comments     Fetch comments for a task"
-	@echo "    - save_task_as_markdown Fetch + save to tickets/"
 
 # ===========================================================================
 #  Full initialization
