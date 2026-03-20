@@ -1,0 +1,11 @@
+{
+  "mcpServers": {
+    "clickup": {
+      "command": "python3",
+      "args": [".claude/clickup-mcp/server.py"],
+      "env": {
+        "CLICKUP_API_TOKEN": "${CLICKUP_API_TOKEN}"
+      }
+    }
+  }
+}
