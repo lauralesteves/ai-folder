@@ -1,6 +1,6 @@
 # AI Folder
 
-A portable `.ai` folder that lives inside any project to provide AI-assisted workflows — code reviews, ticket management, analysis, and more — powered by Claude Code.
+A portable `.ai` folder that lives inside any project to provide AI-assisted workflows: code reviews, ticket management, analysis, and more, powered by Claude Code.
 
 ## Setup
 
